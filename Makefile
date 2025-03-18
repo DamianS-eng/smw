@@ -4,15 +4,15 @@ SRCS:=$(wildcard smb1/*.c smbll/*.c src/*.c src/snes/*.c) third_party/gl_core/gl
 OBJS:=$(SRCS:%.c=%.o)
 
 PYTHON:=/usr/bin/env python3
-CFLAGS:=$(if $(CFLAGS),$(CFLAGS),-O2 -fno-strict-aliasing -Werror )
-CFLAGS:=${CFLAGS} $(shell sdl2-config --cflags) -DSYSTEM_VOLUME_MIXER_AVAILABLE=0 -I.
+#CFLAGS:=$(if $(CFLAGS),$(CFLAGS),-O2 -fno-strict-aliasing -Werror )
+CFLAGS:=${CFLAGS} $(shell pkg-config sdl3 --cflags) -I.
 
 ifeq (${OS},Windows_NT)
     WINDRES:=windres
 #    RES:=sm.res
-    SDLFLAGS:=-Wl,-Bstatic $(shell sdl2-config --static-libs)
+    SDLFLAGS:=-Wl,-Bstatic $(shell pkg-config sdl3 --libs)
 else
-    SDLFLAGS:=$(shell sdl2-config --libs) -lm
+    SDLFLAGS:=$(shell pkg-config sdl3 --libs) -lm
 endif
 
 .PHONY: all clean clean_obj

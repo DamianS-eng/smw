@@ -1,9 +1,12 @@
 #include <stdio.h>
+// now required because global mouse variables are floats instead of integers in SDL3
+#include <math.h>
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #ifdef _WIN32
 #include "platform/win32/volume_control.h"
 #include <direct.h>
@@ -41,7 +44,7 @@ typedef struct GamepadInfo {
 } GamepadInfo;
 
 
-static void SDLCALL AudioCallback(void *userdata, Uint8 *stream, int len);
+static void SDLCALL AudioCallback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount);
 static void LoadAssets();
 static void SwitchDirectory();
 static void RenderNumber(uint8 *dst, size_t pitch, int n, uint8 big);
@@ -85,7 +88,7 @@ static bool g_display_perf;
 static int g_curr_fps;
 static int g_ppu_render_flags = 0;
 static int g_snes_width, g_snes_height;
-static int g_sdl_audio_mixer_volume = SDL_MIX_MAXVOLUME;
+static int g_sdl_audio_mixer_volume = (float)1.0;
 static struct RendererFuncs g_renderer_funcs;
 
 static GamepadInfo g_gamepad[2];
@@ -109,9 +112,9 @@ static GamepadInfo *GetGamepadInfo(SDL_JoystickID id) {
 }
 
 void ChangeWindowScale(int scale_step) {
-  if ((SDL_GetWindowFlags(g_window) & (SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_MAXIMIZED)) != 0)
+  if ((SDL_GetWindowFlags(g_window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_MAXIMIZED)) != 0)
     return;
-  int screen = SDL_GetWindowDisplayIndex(g_window);
+  int screen = SDL_GetDisplayForWindow(g_window);
   if (screen < 0) screen = 0;
   int max_scale = kMaxWindowScale;
   SDL_Rect bounds;
@@ -138,10 +141,10 @@ void ChangeWindowScale(int scale_step) {
   SDL_SetWindowSize(g_window, w, h);
   if (bt >= 0) {
     // Center the window on top of the mouse
-    int mx, my;
+    float mx, my;
     SDL_GetGlobalMouseState(&mx, &my);
-    int wx = IntMax(IntMin(mx - w / 2, bounds.x + bounds.w - bl - br - w), bounds.x + bl);
-    int wy = IntMax(IntMin(my - h / 2, bounds.y + bounds.h - bt - bb - h), bounds.y + bt);
+    float wx = fmax(fmin(mx - w / (float)2.0, bounds.x + bounds.w - bl - br - w), bounds.x + bl);
+    float wy = fmax(fmin(my - h / (float)2.0, bounds.y + bounds.h - bt - bb - h), bounds.y + bt);
     SDL_SetWindowPosition(g_window, wx, wy);
   } else {
     SDL_SetWindowPosition(g_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
@@ -151,10 +154,10 @@ void ChangeWindowScale(int scale_step) {
 #define RESIZE_BORDER 20
 static SDL_HitTestResult HitTestCallback(SDL_Window *win, const SDL_Point *pt, void *data) {
   uint32 flags = SDL_GetWindowFlags(win);
-  if ((flags & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0 || (flags & SDL_WINDOW_FULLSCREEN) != 0)
+  if ((flags & SDL_WINDOW_FULLSCREEN) != 0)
     return SDL_HITTEST_NORMAL;
 
-  if ((SDL_GetModState() & KMOD_CTRL) != 0)
+  if ((SDL_GetModState() & SDL_KMOD_CTRL) != 0)
     return SDL_HITTEST_DRAGGABLE;
 
   int w, h;
@@ -215,7 +218,7 @@ static void DrawPpuFrameWithPerf(void) {
   g_renderer_funcs.EndDraw();
 }
 
-static SDL_mutex *g_audio_mutex;
+static SDL_Mutex *g_audio_mutex;
 static uint8 *g_audiobuffer, *g_audiobuffer_cur, *g_audiobuffer_end;
 static int g_frames_per_block;
 static uint8 g_audio_channels;
@@ -229,24 +232,28 @@ void RtlApuUnlock(void) {
   SDL_UnlockMutex(g_audio_mutex);
 }
 
-static void SDLCALL AudioCallback(void *userdata, Uint8 *stream, int len) {
-  if (SDL_LockMutex(g_audio_mutex)) Die("Mutex lock failed!");
-  while (len != 0) {
+static void SDLCALL AudioCallback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount) {
+// how do I keep this check? SDL_LockMutex returns void in SDL3
+//  if (SDL_LockMutex(g_audio_mutex)) Die("Mutex lock failed!");
+	SDL_LockMutex(g_audio_mutex);
+  while (total_amount != 0) {
     if (g_audiobuffer_end - g_audiobuffer_cur == 0) {
       RtlRenderAudio((int16 *)g_audiobuffer, g_frames_per_block, g_audio_channels);
       g_audiobuffer_cur = g_audiobuffer;
       g_audiobuffer_end = g_audiobuffer + g_frames_per_block * g_audio_channels * sizeof(int16);
     }
-    int n = IntMin(len, g_audiobuffer_end - g_audiobuffer_cur);
-    if (g_sdl_audio_mixer_volume == SDL_MIX_MAXVOLUME) {
+    float n = fmin(total_amount, g_audiobuffer_end - g_audiobuffer_cur);
+    if (g_sdl_audio_mixer_volume == (float)1.0) {
       memcpy(stream, g_audiobuffer_cur, n);
     } else {
       SDL_memset(stream, 0, n);
-      SDL_MixAudioFormat(stream, g_audiobuffer_cur, AUDIO_S16, n, g_sdl_audio_mixer_volume);
+      if(!SDL_MixAudio(stream, g_audiobuffer_cur, SDL_AUDIO_S16, n, g_sdl_audio_mixer_volume)) {
+        SDL_Log("Problem with Mix Audio Format: %s", SDL_GetError()); 
+      }
     }
     g_audiobuffer_cur += n;
     stream += n;
-    len -= n;
+    total_amount -= n;
   }
   SDL_UnlockMutex(g_audio_mutex);
 }
@@ -261,15 +268,12 @@ static bool SdlRenderer_Init(SDL_Window *window) {
   if (g_config.shader)
     fprintf(stderr, "Warning: Shaders are supported only with the OpenGL backend\n");
 
-  SDL_Renderer *renderer = SDL_CreateRenderer(g_window, -1,
-                                              g_config.output_method == kOutputMethod_SDLSoftware ? SDL_RENDERER_SOFTWARE :
-                                              SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  SDL_Renderer *renderer = SDL_CreateRenderer(g_window, NULL)
   if (renderer == NULL) {
     printf("Failed to create renderer: %s\n", SDL_GetError());
     return false;
   }
-  SDL_RendererInfo renderer_info;
-  SDL_GetRendererInfo(renderer, &renderer_info);
+  SDL_PropertiesID renderer_info = SDL_GetRendererProperties(renderer);
   if (kDebugFlag) {
     printf("Supported texture formats:");
     for (Uint32 i = 0; i < renderer_info.num_texture_formats; i++)
@@ -448,7 +452,7 @@ error_reading:;
   if (enable_audio) {
     SDL_AudioSpec want = { 0 }, have;
     want.freq = g_config.audio_freq;
-    want.format = AUDIO_S16;
+    want.format = SDL_AUDIO_S16;
     want.channels = 2;
     want.samples = g_config.audio_samples;
     want.callback = &AudioCallback;
@@ -459,7 +463,7 @@ error_reading:;
     }
     g_audio_channels = 2;
     g_frames_per_block = (534 * have.freq) / 32000;
-    g_audiobuffer = (uint8 *)calloc(g_frames_per_block * have.channels * sizeof(int16), 1);
+    g_audiobuffer = (float *)calloc(g_frames_per_block * have.channels * sizeof(float), 1);
   }
 
   PpuBeginDrawing(g_snes->ppu, g_pixels, 256 * 4, 0);
@@ -830,7 +834,7 @@ static void HandleVolumeAdjustment(int volume_adjustment) {
   SetApplicationVolume(new_volume);
   printf("[System Volume]=%i\n", new_volume);
 #else
-  g_sdl_audio_mixer_volume = IntMin(IntMax(0, g_sdl_audio_mixer_volume + volume_adjustment * (SDL_MIX_MAXVOLUME >> 4)), SDL_MIX_MAXVOLUME);
+  g_sdl_audio_mixer_volume = IntMin(IntMax(0, g_sdl_audio_mixer_volume + volume_adjustment * ((float)1.0 >> 4)), (float)1.0);
   printf("[SDL mixer volume]=%i\n", g_sdl_audio_mixer_volume);
 #endif
 }

@@ -1,5 +1,5 @@
 #include "third_party/gl_core/gl_core_3_1.h"
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include "types.h"
@@ -162,7 +162,7 @@ static void OpenGLRenderer_BeginDraw(int width, int height, uint8 **pixels, int 
 static void OpenGLRenderer_EndDraw(void) {
   int drawable_width, drawable_height;
 
-  SDL_GL_GetDrawableSize(g_window, &drawable_width, &drawable_height);
+  SDL_GetWindowSizeInPixels(g_window, &drawable_width, &drawable_height);
   
   int viewport_width = drawable_width, viewport_height = drawable_height;
 

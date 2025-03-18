@@ -4,6 +4,7 @@
 #include "util.h"
 #include "config.h"
 #include "snes/snes.h"
+#include <stddef.h>
 
 struct StateRecorder;
 

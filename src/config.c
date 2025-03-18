@@ -2,7 +2,7 @@
 #include "types.h"
 #include <stdio.h>
 #include <string.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "util.h"
 
 enum {
@@ -23,7 +23,7 @@ Config g_config;
 static const uint16 kDefaultKbdControls[kKeys_Total] = {
   0,
   // Controls
-  _(SDLK_UP), _(SDLK_DOWN), _(SDLK_LEFT), _(SDLK_RIGHT), _(SDLK_RSHIFT), _(SDLK_RETURN), _(SDLK_x), _(SDLK_z), _(SDLK_s), _(SDLK_a), _(SDLK_c), _(SDLK_v),
+  _(SDLK_UP), _(SDLK_DOWN), _(SDLK_LEFT), _(SDLK_RIGHT), _(SDLK_RSHIFT), _(SDLK_RETURN), _(SDLK_X), _(SDLK_Z), _(SDLK_S), _(SDLK_A), _(SDLK_C), _(SDLK_V),
   // ControlsP2
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
   // LoadState
@@ -37,9 +37,9 @@ static const uint16 kDefaultKbdControls[kKeys_Total] = {
   // Replay Ref State
   C(SDLK_1), C(SDLK_2), C(SDLK_3), C(SDLK_4), C(SDLK_5), C(SDLK_6), C(SDLK_7), C(SDLK_8), C(SDLK_9), C(SDLK_0), C(SDLK_MINUS), C(SDLK_EQUALS), C(SDLK_BACKSPACE), N, N, N, N, N, N, N,
   // CheatLife, CheatJump, ToggleWhichFrame,
-  _(SDLK_w), _(SDLK_q), S(SDLK_r),
+  _(SDLK_W), _(SDLK_Q), S(SDLK_R),
   // ClearKeyLog, StopReplay, Fullscreen, Reset, Pause, PauseDimmed, Turbo, ReplayTurbo, WindowBigger, WindowSmaller, DisplayPerf, ToggleRenderer
-  _(SDLK_k), _(SDLK_l), A(SDLK_RETURN), C(SDLK_r), S(SDLK_p), _(SDLK_p), _(SDLK_TAB), _(SDLK_t), N, N, _(SDLK_f), _(SDLK_r),
+  _(SDLK_K), _(SDLK_L), A(SDLK_RETURN), C(SDLK_R), S(SDLK_P), _(SDLK_P), _(SDLK_TAB), _(SDLK_T), N, N, _(SDLK_F), _(SDLK_R),
   // VolumeUp VolumeDown
   0, 0,
 };
@@ -123,11 +123,11 @@ int FindCmdForSdlKey(SDL_Keycode code, SDL_Keymod mod) {
     return 0;
   int key = 0;
   if (code != SDLK_LALT && code != SDLK_RALT)
-    key |= mod & KMOD_ALT ? kKeyMod_Alt : 0;
+    key |= mod & SDL_KMOD_ALT ? kKeyMod_Alt : 0;
   if (code != SDLK_LCTRL && code != SDLK_RCTRL)
-    key |= mod & KMOD_CTRL ? kKeyMod_Ctrl : 0;
+    key |= mod & SDL_KMOD_CTRL ? kKeyMod_Ctrl : 0;
   if (code != SDLK_LSHIFT && code != SDLK_RSHIFT)
-    key |= mod & KMOD_SHIFT ? kKeyMod_Shift : 0;
+    key |= mod & SDL_KMOD_SHIFT ? kKeyMod_Shift : 0;
   key |= REMAP_SDL_KEYCODE(code);
   return KeyMapHash_Find(key);
 }
